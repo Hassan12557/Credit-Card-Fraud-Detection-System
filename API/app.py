@@ -5,26 +5,33 @@ import numpy as np
 import pandas as pd
 from flask import Flask, jsonify, render_template_string, request, redirect, url_for, session, flash
 from sklearn.preprocessing import StandardScaler
-
-# ==========================================
+ # ==========================================
 # ENVIRONMENT-AWARE DYNAMIC PATH ENGINE
 # ==========================================
 # Determine if running inside a Docker container or Codespace
 IS_CONTAINER = os.path.exists('/.dockerenv') or os.environ.get('CODESPACES') == 'true'
 
-# Determine the absolute project root path
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-# Fallback mechanism: if app.py is run from root vs inside a src/ folder
-if os.path.basename(CURRENT_DIR) in ["src", "app"]:
-    PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
-    SRC_DIRECTORY = CURRENT_DIR
-else:
-    PROJECT_ROOT = CURRENT_DIR
+
+if IS_CONTAINER:
+    print("🐳 Context: Linux Container / GitHub Codespace Environment Detected.")
+    # Force absolute container mapping directory paths
+    PROJECT_ROOT = "/app"
     SRC_DIRECTORY = os.path.join(PROJECT_ROOT, "src")
+    DATA_PATH = os.environ.get("DATA_PATH", os.path.join(PROJECT_ROOT, "data", "raw", "Credit.xlsx"))
+    MODEL_PATH = os.environ.get("MODEL_PATH", os.path.join(PROJECT_ROOT, "models", "model.pkl"))
+else:
+    print("💻 Context: Native Windows/Local Host Environment Detected.")
+    if os.path.basename(CURRENT_DIR) in ["src", "app", "API"]:
+        PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
+    else:
+        PROJECT_ROOT = CURRENT_DIR
+    SRC_DIRECTORY = os.path.join(PROJECT_ROOT, "src")
+    DATA_PATH = r"D:\Data Science Projects\Credit-Card-Fraud-Detection-System\data\raw\Credit.xlsx"
+    MODEL_PATH = r"D:\Data Science Projects\Credit-Card-Fraud-Detection-System\models\model.pkl"
 
 if SRC_DIRECTORY not in sys.path:
     sys.path.insert(0, SRC_DIRECTORY)
-
 # Import pipeline dependencies safely
 try:
     from data_pipeline import CreditCardDataPipeline
