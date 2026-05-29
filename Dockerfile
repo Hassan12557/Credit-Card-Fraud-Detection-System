@@ -26,4 +26,4 @@ COPY . /app/
 EXPOSE 5000
 
 # Fire production service instance gateway worker on startup
-CMD ["python", "app.py"]
+CMD ["python", "API/app.py"]
