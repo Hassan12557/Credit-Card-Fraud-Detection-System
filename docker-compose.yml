@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  riskshield-app:
+    build: .
+    container_name: riskshield_api_container
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
+    environment:
+      - FLASK_ENV=development
+      - SECRET_KEY=codespace_vault_secure_token_9988
+    restart: always
