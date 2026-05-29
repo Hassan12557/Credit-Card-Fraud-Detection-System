@@ -1,11 +1,12 @@
-import os
+ import os
 import sys
 import joblib
 import numpy as np
 import pandas as pd
 from flask import Flask, jsonify, render_template_string, request, redirect, url_for, session, flash
 from sklearn.preprocessing import StandardScaler
- # ==========================================
+
+# ==========================================
 # ENVIRONMENT-AWARE DYNAMIC PATH ENGINE
 # ==========================================
 # Determine if running inside a Docker container or Codespace
@@ -32,6 +33,7 @@ else:
 
 if SRC_DIRECTORY not in sys.path:
     sys.path.insert(0, SRC_DIRECTORY)
+
 # Import pipeline dependencies safely
 try:
     from data_pipeline import CreditCardDataPipeline
@@ -50,11 +52,9 @@ app.secret_key = os.environ.get("SECRET_KEY", "risk_shield_super_secure_vault_ke
 
 # Configure cross-platform path mapping
 if IS_CONTAINER:
-    print("🐳 Context: Linux Container / GitHub Codespace Environment Detected.")
     DATA_PATH = os.environ.get("DATA_PATH", os.path.join(PROJECT_ROOT, "data", "raw", "Credit.xlsx"))
     MODEL_PATH = os.environ.get("MODEL_PATH", os.path.join(PROJECT_ROOT, "models", "model.pkl"))
 else:
-    print("💻 Context: Native Windows/Local Host Environment Detected.")
     DATA_PATH = r"D:\Data Science Projects\Credit-Card-Fraud-Detection-System\data\raw\Credit.xlsx"
     MODEL_PATH = r"D:\Data Science Projects\Credit-Card-Fraud-Detection-System\models\model.pkl"
 
@@ -64,7 +64,7 @@ if not os.path.exists(MODEL_PATH):
     DATA_PATH = os.path.join(PROJECT_ROOT, "data", "raw", "Credit.xlsx")
     MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "model.pkl")
 
- # ==========================================
+# ==========================================
 # GLOBAL MACHINE LEARNING ENGINE INITIALIZATION
 # ==========================================
 print(f"🚀 Loading Model Artifact from: {MODEL_PATH}")
@@ -78,70 +78,88 @@ else:
         def predict_proba(self, X): return np.array([[0.92, 0.08]])
     model = MockModel()
 
+# 🛡️ DEFENSIVE SEEDING: Safe global fallbacks to prevent NameErrors 
+categories = ["Entertainment", "Food & Dining", "Gas Stations", "Groceries", "Online Retail"]
+countries = ["USA", "CAN", "GBR", "AUS", "DEU"]
+feature_columns = ["card_holder_age", "amount"]
+scaler = StandardScaler()
+
 print(f"📊 Parsing Source Analytics Schema from: {DATA_PATH}")
 if os.path.exists(DATA_PATH):
-    pipeline = CreditCardDataPipeline(file_path=DATA_PATH)
-    raw_df = pipeline.load_data()
-    cleaned_df = pipeline.clean_data(raw_df)
-    
-    # ----------------------------------------------------
-    # DYNAMIC COLUMN DISCOVERY ENGINE (Prevents KeyErrors)
-    # ----------------------------------------------------
-    existing_cols = list(cleaned_df.columns)
-    print(f"📋 Columns detected inside cleaned dataframe: {existing_cols}")
-    
-    # Smart discovery for the Age column
-    age_col = None
-    for candidate in ["card_holder_age", "age", "cardholder_age", "holder_age"]:
-        if candidate in existing_cols:
-            age_col = candidate
-            break
-    if not age_col:
-        for c in existing_cols:
-            if 'age' in str(c).lower():
-                age_col = c
+    try:
+        pipeline = CreditCardDataPipeline(file_path=DATA_PATH)
+        raw_df = pipeline.load_data()
+        cleaned_df = pipeline.clean_data(raw_df)
+        
+        # ----------------------------------------------------
+        # DYNAMIC COLUMN DISCOVERY ENGINE (Prevents KeyErrors)
+        # ----------------------------------------------------
+        existing_cols = list(cleaned_df.columns)
+        print(f"📋 Columns detected inside cleaned dataframe: {existing_cols}")
+        
+        # Smart discovery for the Age column
+        age_col = None
+        for candidate in ["card_holder_age", "age", "cardholder_age", "holder_age"]:
+            if candidate in existing_cols:
+                age_col = candidate
                 break
+        if not age_col:
+            for c in existing_cols:
+                if 'age' in str(c).lower():
+                    age_col = c
+                    break
 
-    # Smart discovery for the Amount column
-    amount_col = None
-    for candidate in ["amount", "transaction_amount", "amt", "Amount"]:
-        if candidate in existing_cols:
-            amount_col = candidate
-            break
-    if not amount_col:
-        for c in existing_cols:
-            if 'amount' in str(c).lower() or 'amt' in str(c).lower():
-                amount_col = c
+        # Smart discovery for the Amount column
+        amount_col = None
+        for candidate in ["amount", "transaction_amount", "amt", "Amount"]:
+            if candidate in existing_cols:
+                amount_col = candidate
                 break
+        if not amount_col:
+            for c in existing_cols:
+                if 'amount' in str(c).lower() or 'amt' in str(c).lower():
+                    amount_col = c
+                    break
 
-    # Apply discovered mappings or execute safe fallback
-    if age_col and amount_col:
-        numerical_cols = [age_col, amount_col]
-        print(f"🎯 Success: Automatically mapped numerical features to: {numerical_cols}")
-    else:
-        # Fallback: grab the first two numeric columns present in the dataset
-        numeric_cols_found = list(cleaned_df.select_dtypes(include=[np.number]).columns)
-        if len(numeric_cols_found) >= 2:
-            numerical_cols = numeric_cols_found[:2]
-            print(f"⚠️ Column names missing. Falling back to first numeric pairs: {numerical_cols}")
+        # Apply discovered mappings or execute safe fallback
+        if age_col and amount_col:
+            numerical_cols = [age_col, amount_col]
+            print(f"🎯 Success: Automatically mapped numerical features to: {numerical_cols}")
         else:
-            numerical_cols = ["card_holder_age", "amount"]
-            print(f"🚨 Defaulting to base definitions. Data schema may be corrupted.")
+            numeric_cols_found = list(cleaned_df.select_dtypes(include=[np.number]).columns)
+            if len(numeric_cols_found) >= 2:
+                numerical_cols = numeric_cols_found[:2]
+                print(f"⚠️ Column names missing. Falling back to first numeric pairs: {numerical_cols}")
+            else:
+                numerical_cols = ["card_holder_age", "amount"]
+                print(f"🚨 Defaulting to base definitions. Data schema may be corrupted.")
 
-    # Execute scaling safely using the matched columns
-    scaler = StandardScaler()
-    scaler.fit(cleaned_df[numerical_cols])
-    
-    categories = sorted(cleaned_df["merchant_category"].dropna().unique().tolist()) if "merchant_category" in cleaned_df else ["Entertainment", "Groceries", "Online Retail"]
-    countries = sorted(cleaned_df["device_country"].dropna().unique().tolist()) if "device_country" in cleaned_df else ["USA", "CAN", "GBR"]
-    feature_columns = getattr(pipeline, 'training_columns', ["card_holder_age", "amount"])
+        # ----------------------------------------------------
+        # SAFE SCALER FITTING ENGINE (Prevents RuntimeWarnings)
+        # ----------------------------------------------------
+        valid_numeric_data = cleaned_df[numerical_cols].dropna() if all(col in cleaned_df.columns for col in numerical_cols) else pd.DataFrame()
+        
+        if not valid_numeric_data.empty and len(valid_numeric_data) > 1 and valid_numeric_data.var().sum() > 0:
+            scaler.fit(valid_numeric_data)
+            print(f"🎯 Success: Scaler fitted cleanly with real-world dataset distributions across: {numerical_cols}")
+        else:
+            print("⚠️ Warning: Cleaned dataset numerical columns are empty or constant. Seeding fallback baseline scale matrix.")
+            fallback_df = pd.DataFrame([[30, 100], [50, 500]], columns=numerical_cols)
+            scaler.fit(fallback_df)
+        
+        if "merchant_category" in cleaned_df and len(cleaned_df["merchant_category"].dropna()) > 0:
+            categories = sorted(cleaned_df["merchant_category"].dropna().unique().tolist())
+        if "device_country" in cleaned_df and len(cleaned_df["device_country"].dropna()) > 0:
+            countries = sorted(cleaned_df["device_country"].dropna().unique().tolist())
+        feature_columns = getattr(pipeline, 'training_columns', ["card_holder_age", "amount"])
+        
+    except Exception as e:
+        print(f"❌ Error during telemetry data ingestion: {str(e)}. Using fallback defaults.")
+        scaler.fit(pd.DataFrame([[30, 100], [50, 500]], columns=["card_holder_age", "amount"]))
 else:
     print("⚠️ Warning: Data source spreadsheet missing. Initializing fallback structures.")
-    scaler = StandardScaler()
     scaler.fit(pd.DataFrame([[30, 100], [50, 500]], columns=["card_holder_age", "amount"]))
-    categories = ["Entertainment", "Food & Dining", "Gas Stations", "Groceries", "Online Retail"]
-    countries = ["USA", "CAN", "GBR", "AUS", "DEU"]
-    feature_columns = ["card_holder_age", "amount"]
+
 # ==========================================
 # SIMULATED MEMORY DATABASES
 # ==========================================
@@ -154,7 +172,7 @@ USERS_DB = {
     }
 }
 
-# [HTML UI Component Strings from prior versions remain exactly preserved here]
+# UI Layout Components
 BASE_HEAD = """
 <head>
     <meta charset="UTF-8">
@@ -299,16 +317,6 @@ def dashboard():
 # ==========================================
 @app.route("/predict", methods=["POST"])
 def predict():
-    """
-    Accepts POST JSON requests containing transactional telemetry arrays.
-    Example Request Body:
-    {
-       "age": 34,
-       "amount": 125.50,
-       "category": "Groceries",
-       "country": "USA"
-    }
-    """
     try:
         data = request.get_json() or {}
         user_age = float(data.get("age", 30))
@@ -316,14 +324,35 @@ def predict():
         user_cat = str(data.get("category", "")).strip().capitalize()
         user_country = str(data.get("country", "")).strip()
 
-        # Execute Feature Scale Adjustments
-        input_num_df = pd.DataFrame([[user_age, user_amount]], columns=["card_holder_age", "amount"])
+        # 🎯 FIX: Dynamically adapt to whatever feature layout the scaler was fitted with
+        scaler_features = list(getattr(scaler, "feature_names_in_", ["card_holder_age", "amount"]))
+        input_num_df = pd.DataFrame([[user_age, user_amount]], columns=scaler_features)
         scaled_nums = scaler.transform(input_num_df)[0]
 
         # Initialize full vector dimensionality array
         input_vector_dict = {col: 0 for col in feature_columns}
-        input_vector_dict["card_holder_age"] = scaled_nums[0]
-        input_vector_dict["amount"] = scaled_nums[1]
+        
+        # 🎯 FIX: Smart feature-mapping crosswalk loop prevents schema tracking drops
+        for i, col_name in enumerate(scaler_features):
+            if col_name in input_vector_dict:
+                input_vector_dict[col_name] = scaled_nums[i]
+            else:
+                matched = False
+                if "age" in col_name.lower():
+                    for f_col in feature_columns:
+                        if "age" in f_col.lower():
+                            input_vector_dict[f_col] = scaled_nums[i]
+                            matched = True
+                            break
+                if not matched and ("amount" in col_name.lower() or "amt" in col_name.lower()):
+                    for f_col in feature_columns:
+                        if "amount" in f_col.lower() or "amt" in f_col.lower():
+                            input_vector_dict[f_col] = scaled_nums[i]
+                            matched = True
+                            break
+                if not matched:
+                    if i < len(feature_columns):
+                        input_vector_dict[feature_columns[i]] = scaled_nums[i]
 
         # Handle Categorical Binary Mappings
         cat_dummy_col = f"merchant_category_{user_cat}"
@@ -348,6 +377,5 @@ def predict():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == "__main__":
-    # Container execution requires exposing to host interface 0.0.0.0
     host_ip = "0.0.0.0" if IS_CONTAINER else "127.0.0.1"
     app.run(debug=True, host=host_ip, port=5000)
