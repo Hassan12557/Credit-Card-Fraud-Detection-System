@@ -64,7 +64,7 @@ if not os.path.exists(MODEL_PATH):
     DATA_PATH = os.path.join(PROJECT_ROOT, "data", "raw", "Credit.xlsx")
     MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "model.pkl")
 
-# ==========================================
+ # ==========================================
 # GLOBAL MACHINE LEARNING ENGINE INITIALIZATION
 # ==========================================
 print(f"🚀 Loading Model Artifact from: {MODEL_PATH}")
@@ -73,7 +73,6 @@ if os.path.exists(MODEL_PATH):
     print("-> Model Binary loaded successfully.")
 else:
     print(f"❌ CRITICAL ERROR: Trained model file missing at {MODEL_PATH}!")
-    # Seed mock model for continuous integration/deployment health checks if file missing
     class MockModel:
         def predict(self, X): return np.array([0])
         def predict_proba(self, X): return np.array([[0.92, 0.08]])
@@ -85,12 +84,56 @@ if os.path.exists(DATA_PATH):
     raw_df = pipeline.load_data()
     cleaned_df = pipeline.clean_data(raw_df)
     
+    # ----------------------------------------------------
+    # DYNAMIC COLUMN DISCOVERY ENGINE (Prevents KeyErrors)
+    # ----------------------------------------------------
+    existing_cols = list(cleaned_df.columns)
+    print(f"📋 Columns detected inside cleaned dataframe: {existing_cols}")
+    
+    # Smart discovery for the Age column
+    age_col = None
+    for candidate in ["card_holder_age", "age", "cardholder_age", "holder_age"]:
+        if candidate in existing_cols:
+            age_col = candidate
+            break
+    if not age_col:
+        for c in existing_cols:
+            if 'age' in str(c).lower():
+                age_col = c
+                break
+
+    # Smart discovery for the Amount column
+    amount_col = None
+    for candidate in ["amount", "transaction_amount", "amt", "Amount"]:
+        if candidate in existing_cols:
+            amount_col = candidate
+            break
+    if not amount_col:
+        for c in existing_cols:
+            if 'amount' in str(c).lower() or 'amt' in str(c).lower():
+                amount_col = c
+                break
+
+    # Apply discovered mappings or execute safe fallback
+    if age_col and amount_col:
+        numerical_cols = [age_col, amount_col]
+        print(f"🎯 Success: Automatically mapped numerical features to: {numerical_cols}")
+    else:
+        # Fallback: grab the first two numeric columns present in the dataset
+        numeric_cols_found = list(cleaned_df.select_dtypes(include=[np.number]).columns)
+        if len(numeric_cols_found) >= 2:
+            numerical_cols = numeric_cols_found[:2]
+            print(f"⚠️ Column names missing. Falling back to first numeric pairs: {numerical_cols}")
+        else:
+            numerical_cols = ["card_holder_age", "amount"]
+            print(f"🚨 Defaulting to base definitions. Data schema may be corrupted.")
+
+    # Execute scaling safely using the matched columns
     scaler = StandardScaler()
-    numerical_cols = ["card_holder_age", "amount"]
     scaler.fit(cleaned_df[numerical_cols])
     
-    categories = sorted(cleaned_df["merchant_category"].dropna().unique().tolist())
-    countries = sorted(cleaned_df["device_country"].dropna().unique().tolist())
+    categories = sorted(cleaned_df["merchant_category"].dropna().unique().tolist()) if "merchant_category" in cleaned_df else ["Entertainment", "Groceries", "Online Retail"]
+    countries = sorted(cleaned_df["device_country"].dropna().unique().tolist()) if "device_country" in cleaned_df else ["USA", "CAN", "GBR"]
     feature_columns = getattr(pipeline, 'training_columns', ["card_holder_age", "amount"])
 else:
     print("⚠️ Warning: Data source spreadsheet missing. Initializing fallback structures.")
@@ -99,7 +142,6 @@ else:
     categories = ["Entertainment", "Food & Dining", "Gas Stations", "Groceries", "Online Retail"]
     countries = ["USA", "CAN", "GBR", "AUS", "DEU"]
     feature_columns = ["card_holder_age", "amount"]
-
 # ==========================================
 # SIMULATED MEMORY DATABASES
 # ==========================================
