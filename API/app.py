@@ -316,6 +316,7 @@ def dashboard():
 
 # ==========================================
  # ==========================================
+ # ==========================================
 # RESTFUL API INFERENCE ENDPOINT
 # ==========================================
 @app.route("/predict", methods=["POST"])
@@ -328,8 +329,7 @@ def predict():
         user_cat = str(data.get("category", "")).strip()
         user_country = str(data.get("country", "")).strip()
 
-        # 1. Grab feature requirements directly from model properties if available
-        # Fallback to the global feature_columns tracking sequence
+        # 1. Grab feature requirements directly from model properties
         global feature_columns
         if hasattr(model, "feature_names_in_"):
             expected_features = list(model.feature_names_in_)
@@ -349,7 +349,6 @@ def predict():
             if col_name in input_vector_dict:
                 input_vector_dict[col_name] = scaled_nums[i]
             else:
-                # Handle alternative name formats safely
                 matched = False
                 if "age" in col_name.lower():
                     for f_col in expected_features:
@@ -364,23 +363,26 @@ def predict():
                             matched = True
                             break
 
-        # 5. Process categorical variant flags into sparse vector entries
-        for cat_variant in [user_cat, user_cat.lower(), user_cat.capitalize(), user_cat.upper(), user_cat.replace(" ", "_")]:
-            dummy_col = f"merchant_category_{cat_variant}"
+        # 5. Process category variant flags cleanly
+        cat_variants = [user_cat, user_cat.lower(), user_cat.capitalize(), user_cat.upper(), user_cat.replace(" ", "_")]
+        for cv in cat_variants:
+            dummy_col = f"merchant_category_{cv}"
             if dummy_col in input_vector_dict:
                 input_vector_dict[dummy_col] = 1
                 break
                 
-        for country_variant in [user_country, user_country.lower(), user_country.upper(), country_variant.capitalize() if 'country_variant' in locals() else user_country]:
-            dummy_col = f"device_country_{country_variant}"
+        # 6. Process country variant flags cleanly (Fixed Typo)
+        country_variants = [user_country, user_country.lower(), user_country.upper(), user_country.capitalize()]
+        for cv in country_variants:
+            dummy_col = f"device_country_{cv}"
             if dummy_col in input_vector_dict:
                 input_vector_dict[dummy_col] = 1
                 break
 
-        # 🎯 THE CRITICAL FIX: Build DataFrame using ALL expected feature columns in exact order
+        # 7. Build DataFrame using ALL expected feature columns in exact order
         final_input_df = pd.DataFrame([input_vector_dict], columns=expected_features)
         
-        # 6. Execute ML core evaluation array matrix
+        # 8. Execute ML core evaluation array matrix
         prediction = int(model.predict(final_input_df)[0])
         probability = float(model.predict_proba(final_input_df)[0][1])
 
@@ -393,6 +395,6 @@ def predict():
     except Exception as e:
         print(f"❌ Error during runtime model prediction: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
-if __name__ == "__main__":
+ if __name__ == "__main__":
     host_ip = "0.0.0.0" if IS_CONTAINER else "127.0.0.1"
     app.run(debug=True, host=host_ip, port=5000) 
