@@ -1,405 +1,3 @@
-# import os
-# import sys
-# import joblib
-# import numpy as np
-# import pandas as pd
-# from flask import Flask, jsonify, render_template_string, request, redirect, url_for, session, flash
-# from sklearn.preprocessing import StandardScaler
-
-# # ==========================================
-# # ENVIRONMENT-AWARE DYNAMIC PATH ENGINE
-# # ==========================================
-# IS_CONTAINER = os.path.exists('/.dockerenv') or os.environ.get('CODESPACES') == 'true'
-
-# CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# if IS_CONTAINER:
-#     print("🐳 Context: Linux Container / GitHub Codespace Environment Detected.")
-#     PROJECT_ROOT = "/app"
-#     SRC_DIRECTORY = os.path.join(PROJECT_ROOT, "src")
-#     DATA_PATH = os.environ.get("DATA_PATH", os.path.join(PROJECT_ROOT, "data", "raw", "Credit.xlsx"))
-#     MODEL_PATH = os.environ.get("MODEL_PATH", os.path.join(PROJECT_ROOT, "models", "model.pkl"))
-# else:
-#     print("💻 Context: Native Windows/Local Host Environment Detected.")
-#     if os.path.basename(CURRENT_DIR) in ["src", "app", "API"]:
-#         PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
-#     else:
-#         PROJECT_ROOT = CURRENT_DIR
-#     SRC_DIRECTORY = os.path.join(PROJECT_ROOT, "src")
-#     DATA_PATH = r"D:\Data Science Projects\Credit-Card-Fraud-Detection-System\data\raw\Credit.xlsx"
-#     MODEL_PATH = r"D:\Data Science Projects\Credit-Card-Fraud-Detection-System\models\model.pkl"
-
-# if SRC_DIRECTORY not in sys.path:
-#     sys.path.insert(0, SRC_DIRECTORY)
-
-# try:
-#     from data_pipeline import CreditCardDataPipeline
-# except ImportError:
-#     class CreditCardDataPipeline:
-#         def __init__(self, file_path): self.file_path = file_path
-#         def load_data(self): return pd.read_excel(self.file_path)
-#         def clean_data(self, df): return df.copy()
-#         def encode_features(self, df): return df, None
-#         @property
-#         def training_columns(self): return ["card_holder_age", "amount"]
-
-# app = Flask(__name__)
-# app.secret_key = os.environ.get("SECRET_KEY", "risk_shield_super_secure_vault_key_2026")
-
-# if IS_CONTAINER:
-#     DATA_PATH = os.environ.get("DATA_PATH", os.path.join(PROJECT_ROOT, "data", "raw", "Credit.xlsx"))
-#     MODEL_PATH = os.environ.get("MODEL_PATH", os.path.join(PROJECT_ROOT, "models", "model.pkl"))
-# else:
-#     DATA_PATH = r"D:\Data Science Projects\Credit-Card-Fraud-Detection-System\data\raw\Credit.xlsx"
-#     MODEL_PATH = r"D:\Data Science Projects\Credit-Card-Fraud-Detection-System\models\model.pkl"
-
-# if not os.path.exists(MODEL_PATH):
-#     print(f"⚠️ Target path unreadable. Falling back to relative structure layout...")
-#     DATA_PATH = os.path.join(PROJECT_ROOT, "data", "raw", "Credit.xlsx")
-#     MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "model.pkl")
-
-# # ==========================================
-# # GLOBAL MACHINE LEARNING ENGINE INITIALIZATION
-# # ==========================================
-# print(f"🚀 Loading Model Artifact from: {MODEL_PATH}")
-# if os.path.exists(MODEL_PATH):
-#     model = joblib.load(MODEL_PATH)
-#     print("-> Model Binary loaded successfully.")
-# else:
-#     print(f"❌ CRITICAL ERROR: Trained model file missing at {MODEL_PATH}!")
-#     class MockModel:
-#         def predict(self, X): return np.array([0])
-#         def predict_proba(self, X): return np.array([[0.92, 0.08]])
-#     model = MockModel()
-
-# categories = ["Entertainment", "Food & Dining", "Gas Stations", "Groceries", "Online Retail"]
-# countries = ["USA", "CAN", "GBR", "AUS", "DEU"]
-# feature_columns = ["card_holder_age", "amount"]
-# scaler = StandardScaler()
-
-# print(f"📊 Parsing Source Analytics Schema from: {DATA_PATH}")
-# if os.path.exists(DATA_PATH):
-#     try:
-#         pipeline = CreditCardDataPipeline(file_path=DATA_PATH)
-#         raw_df = pipeline.load_data()
-#         cleaned_df = pipeline.clean_data(raw_df)
-        
-#         existing_cols = list(cleaned_df.columns)
-#         print(f"📋 Columns detected inside cleaned dataframe: {existing_cols}")
-        
-#         age_col = None
-#         for candidate in ["card_holder_age", "age", "cardholder_age", "holder_age"]:
-#             if candidate in existing_cols:
-#                 age_col = candidate
-#                 break
-#         if not age_col:
-#             for c in existing_cols:
-#                 if 'age' in str(c).lower():
-#                     age_col = c
-#                     break
-
-#         amount_col = None
-#         for candidate in ["amount", "transaction_amount", "amt", "Amount"]:
-#             if candidate in existing_cols:
-#                 amount_col = candidate
-#                 break
-#         if not amount_col:
-#             for c in existing_cols:
-#                 if 'amount' in str(c).lower() or 'amt' in str(c).lower():
-#                     amount_col = c
-#                     break
-
-#         if age_col and amount_col:
-#             numerical_cols = [age_col, amount_col]
-#             print(f"🎯 Success: Automatically mapped numerical features to: {numerical_cols}")
-#         else:
-#             numeric_cols_found = list(cleaned_df.select_dtypes(include=[np.number]).columns)
-#             if len(numeric_cols_found) >= 2:
-#                 numerical_cols = numeric_cols_found[:2]
-#                 print(f"⚠️ Column names missing. Falling back to first numeric pairs: {numerical_cols}")
-#             else:
-#                 numerical_cols = ["card_holder_age", "amount"]
-#                 print(f"🚨 Defaulting to base definitions. Data schema may be corrupted.")
-
-#         valid_numeric_data = cleaned_df[numerical_cols].dropna() if all(col in cleaned_df.columns for col in numerical_cols) else pd.DataFrame()
-        
-#         if not valid_numeric_data.empty and len(valid_numeric_data) > 1 and valid_numeric_data.var().sum() > 0:
-#             scaler.fit(valid_numeric_data)
-#             print(f"🎯 Success: Scaler fitted cleanly with real-world dataset distributions across: {numerical_cols}")
-#         else:
-#             print("⚠️ Warning: Cleaned dataset numerical columns are empty or constant. Seeding fallback baseline scale matrix.")
-#             fallback_df = pd.DataFrame([[30, 100], [50, 500]], columns=numerical_cols)
-#             scaler.fit(fallback_df)
-        
-#         if "merchant_category" in cleaned_df and len(cleaned_df["merchant_category"].dropna()) > 0:
-#             categories = sorted(cleaned_df["merchant_category"].dropna().unique().tolist())
-#         if "device_country" in cleaned_df and len(cleaned_df["device_country"].dropna()) > 0:
-#             countries = sorted(cleaned_df["device_country"].dropna().unique().tolist())
-#         feature_columns = getattr(pipeline, 'training_columns', ["card_holder_age", "amount"])
-        
-#     except Exception as e:
-#         print(f"❌ Error during telemetry data ingestion: {str(e)}. Using fallback defaults.")
-#         scaler.fit(pd.DataFrame([[30, 100], [50, 500]], columns=["card_holder_age", "amount"]))
-# else:
-#     print("⚠️ Warning: Data source spreadsheet missing. Initializing fallback structures.")
-#     scaler.fit(pd.DataFrame([[30, 100], [50, 500]], columns=["card_holder_age", "amount"]))
-
-# USERS_DB = {
-#     "demo@riskshield.ai": {
-#         "password": "password123",
-#         "name": "Alex Carter",
-#         "tier": "Enterprise Auditor",
-#         "joined": "2026-01-15"
-#     }
-# }
-
-# BASE_HEAD = """
-# <head>
-#     <meta charset="UTF-8">
-#     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-#     <title>RiskShield AI Portal</title>
-#     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-#     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-#     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-#     <style>body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #0b0f19; }</style>
-# </head>
-# """
-# NAVBAR = """
-# <header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50 px-6 py-4 flex justify-between items-center">
-#     <a href="/" class="flex items-center gap-3 no-underline">
-#         <div class="bg-gradient-to-tr from-cyan-500 to-blue-600 p-2.5 rounded-xl shadow-lg shadow-blue-500/20"><i class="fa-solid fa-shield-halved text-xl text-white"></i></div>
-#         <div>
-#             <h1 class="text-lg font-bold tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">RiskShield AI</h1>
-#             <p class="text-xs text-cyan-400 font-mono tracking-widest uppercase">Secured Web App Gateway</p>
-#         </div>
-#     </a>
-#     <nav class="flex items-center gap-6">
-#         {% if session.get('user_email') %}
-#             <a href="/dashboard" class="text-sm font-medium text-slate-300 hover:text-white transition-colors"><i class="fa-solid fa-chart-pie mr-1.5"></i>Scoring Console</a>
-#             <a href="/account" class="text-sm font-medium text-slate-300 hover:text-white transition-colors"><i class="fa-solid fa-user-gear mr-1.5"></i>My Profile</a>
-#             <a href="/logout" class="text-sm font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 px-4 py-2 rounded-xl border border-rose-500/20 transition-all"><i class="fa-solid fa-power-off mr-1.5"></i>Sign Out</a>
-#         {% else %}
-#             <a href="/login" class="text-sm font-medium text-slate-300 hover:text-white transition-colors">Sign In</a>
-#             <a href="/register" class="bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-sm font-semibold px-5 py-2.5 rounded-xl shadow-md transition-all hover:opacity-95">Create Account</a>
-#         {% endif %}
-#     </nav>
-# </header>
-# """
-# BASE_LAYOUT = "<!DOCTYPE html><html lang='en'>{BASE_HEAD}<body class='text-slate-200 min-h-screen flex flex-col justify-between'>{NAVBAR}{CONTENT}</body></html>"
-
-# def render_page(content_template, **context):
-#     full_html = BASE_LAYOUT.replace("{BASE_HEAD}", BASE_HEAD).replace("{NAVBAR}", NAVBAR).replace("{CONTENT}", content_template)
-#     return render_template_string(full_html, **context)
-
-# HOME_CONTENT = """
-# <main class="flex-grow max-w-4xl mx-auto flex flex-col items-center justify-center text-center px-6 py-20">
-#     <span class="text-xs font-mono tracking-widest uppercase text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-3 py-1.5 rounded-full mb-6">Autonomous Risk Infrastructure</span>
-#     <h2 class="text-4xl md:text-5xl font-extrabold text-white tracking-tight leading-tight max-w-2xl">Real-Time Machine Learning <br><span class="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Credit Card Fraud Prevention</span></h2>
-#     <div class="mt-10 flex flex-wrap gap-4 justify-center">
-#         {% if session.get('user_email') %} <a href="/dashboard" class="bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold px-8 py-4 rounded-xl shadow-lg hover:opacity-95 transition-all">Launch Scoring Console</a>
-#         {% else %} <a href="/register" class="bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold px-8 py-4 rounded-xl shadow-lg hover:opacity-95 transition-all">Get Started Free</a>
-#         <a href="/login" class="bg-slate-900 border border-slate-800 text-slate-300 font-semibold px-8 py-4 rounded-xl hover:text-white transition-all">Access Account</a> {% endif %}
-#     </div>
-# </main>
-# """
-# REGISTER_CONTENT = """
-# <main class="flex-grow flex items-center justify-center p-6 my-6">
-#     <div class="max-w-md w-full bg-slate-900/40 border border-slate-800 backdrop-blur-xl p-8 rounded-3xl shadow-2xl">
-#         <h3 class="text-2xl font-bold text-white text-center tracking-tight mb-6">Create your account</h3>
-#         <div class="space-y-2.5 mb-6">
-#             <button onclick="alert('Google Auth Connect...')" class="w-full bg-slate-950 border border-slate-800 hover:bg-slate-900 text-slate-200 text-sm font-medium py-3 rounded-xl transition-all flex items-center justify-center gap-3"><i class="fa-brands fa-google"></i> Continue with Google</button>
-#             <button onclick="alert('Facebook Auth Connect...')" class="w-full bg-slate-950 border border-slate-800 hover:bg-slate-900 text-slate-200 text-sm font-medium py-3 rounded-xl transition-all flex items-center justify-center gap-3"><i class="fa-brands fa-facebook text-blue-500"></i> Continue with Facebook</button>
-#         </div>
-#         <div class="relative flex items-center justify-center mb-6"><div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-800/80"></div></div><span class="relative px-3 bg-[#0b0f19] text-[9px] font-bold tracking-widest text-slate-500 uppercase">OR CONTINUE WITH EMAIL</span></div>
-#         <form method="POST" class="space-y-4">
-#             <div><label class="block text-xs font-semibold text-slate-400 mb-2">Full Name</label><input type="text" name="name" required class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-cyan-500"></div>
-#             <div><label class="block text-xs font-semibold text-slate-400 mb-2">Email Address</label><input type="email" name="email" required class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-cyan-500"></div>
-#             <div><label class="block text-xs font-semibold text-slate-400 mb-2">Password</label><input type="password" name="password" required class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-cyan-500"></div>
-#             <button type="submit" class="w-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold py-3.5 rounded-xl text-sm mt-2">Sign Up</button>
-#         </form>
-#     </div>
-# </main>
-# """
-# LOGIN_CONTENT = REGISTER_CONTENT.replace("Create your account", "Welcome back").replace("Sign Up", "Continue")
-
-# DASHBOARD_CONTENT = """
-# <main class="flex-grow max-w-6xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-#     <section class="lg:col-span-7 bg-slate-900/40 border border-slate-800 backdrop-blur-xl p-6 rounded-3xl shadow-2xl">
-#         <form id="prediction-form" class="space-y-4">
-#             <div class="grid grid-cols-2 gap-4">
-#                 <div><label class="block text-[10px] font-bold text-slate-500 mb-2">Cardholder Age</label><input type="number" name="age" value="34" required class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-3 px-4 text-sm text-white"></div>
-#                 <div><label class="block text-[10px] font-bold text-slate-500 mb-2">Amount ($ USD)</label><input type="number" step="0.01" name="amount" value="125.50" required class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-3 px-4 text-sm text-white"></div>
-#             </div>
-#             <div class="grid grid-cols-2 gap-4">
-#                 <div><label class="block text-[10px] font-bold text-slate-500 mb-2">Merchant Category</label><select name="category" class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-3 px-4 text-sm text-white">{% for cat in categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}</select></div>
-#                 <div><label class="block text-[10px] font-bold text-slate-500 mb-2">Origin Country</label><select name="country" class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-3 px-4 text-sm text-white">{% for c in countries %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select></div>
-#             </div>
-#             <button type="submit" class="w-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold py-3.5 rounded-xl text-sm mt-2">Evaluate Telemetry Vectors</button>
-#         </form>
-#     </section>
-#     <section class="lg:col-span-5">
-#         <div id="output-display" class="h-full bg-slate-900/40 border border-slate-800 p-5 rounded-3xl flex flex-col justify-between">
-#             <div>
-#                 <h4 class="text-xs uppercase text-slate-500 font-mono mb-4">Response Matrix Node</h4>
-#                 <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800"><p id="prob-text" class="text-2xl font-mono font-bold text-cyan-400">0.0%</p><p class="text-xs text-slate-400 mt-1">Algorithmic Fraud Imbalance Score</p></div>
-#             </div>
-#         </div>
-#     </section>
-# </main>
-# <script>
-# document.getElementById('prediction-form').addEventListener('submit', async function(e) {
-#     e.preventDefault();
-#     const formData = new FormData(this);
-    
-#     try {
-#         const response = await fetch('/predict', {
-#             method: 'POST',
-#             headers: { 'Content-Type': 'application/json' },
-#             body: JSON.stringify({ 
-#                 age: parseInt(formData.get('age')), 
-#                 amount: parseFloat(formData.get('amount')), 
-#                 category: formData.get('category'), 
-#                 country: formData.get('country') 
-#             })
-#         });
-        
-#         const data = await response.json();
-        
-#         // 🎯 FIX: Added protective fallback validation mapping structures
-#         if (data && data.status === "success" && data.fraud_probability !== undefined) {
-#             const formattedPercentage = (data.fraud_probability * 100).toFixed(2) + '%';
-#             const riskLabel = data.is_fraud ? "CRITICAL RISK" : "SECURE";
-#             document.getElementById('prob-text').innerText = `${formattedPercentage} — ${riskLabel}`;
-#         } else {
-#             console.error("Incompatible packet received:", data);
-#             document.getElementById('prob-text').innerText = "ERROR: Unexpected API format";
-#         }
-#     } catch (err) {
-#         console.error("Network interface communication failure:", err);
-#         document.getElementById('prob-text').innerText = "CRITICAL PATH DISCONNECT";
-#     }
-# });
-# </script>
-# """
-# ACCOUNT_CONTENT = " <main class='p-12 text-center'><h3 class='text-xl text-white'>Profile Configuration</h3><p class='text-slate-400'>Logged in as: {{ session['user_email'] }}</p></main> "
-
-# @app.route("/")
-# def home(): return render_page(HOME_CONTENT)
-
-# @app.route("/register", methods=["GET", "POST"])
-# def register():
-#     if request.method == "POST":
-#         email = request.form.get("email").strip().lower()
-#         USERS_DB[email] = {"password": request.form.get("password"), "name": request.form.get("name"), "tier": "Standard User", "joined": "2026-05-29"}
-#         session["user_email"] = email
-#         return redirect(url_for("dashboard"))
-#     return render_page(REGISTER_CONTENT)
-
-# @app.route("/login", methods=["GET", "POST"])
-# def login():
-#     if request.method == "POST":
-#         email = request.form.get("email").strip().lower()
-#         if email in USERS_DB:
-#             session["user_email"] = email
-#             return redirect(url_for("dashboard"))
-#     return render_page(LOGIN_CONTENT)
-
-# @app.route("/logout")
-# def logout():
-#     session.clear()
-#     return redirect(url_for("home"))
-
-# @app.route("/dashboard")
-# def dashboard():
-#     if "user_email" not in session: return redirect(url_for("login"))
-#     return render_page(DASHBOARD_CONTENT, categories=categories, countries=countries)
-
-# # ==========================================
-#  # ==========================================
-#  # ==========================================
-# # RESTFUL API INFERENCE ENDPOINT
-# # ==========================================
-# @app.route("/predict", methods=["POST"])
-# def predict():
-#     try:
-#         data = request.get_json() or {}
-#         user_age = float(data.get("age", 30))
-#         user_amount = float(data.get("amount", 0.0))
-        
-#         user_cat = str(data.get("category", "")).strip()
-#         user_country = str(data.get("country", "")).strip()
-
-#         # 1. Grab feature requirements directly from model properties
-#         global feature_columns
-#         if hasattr(model, "feature_names_in_"):
-#             expected_features = list(model.feature_names_in_)
-#         else:
-#             expected_features = feature_columns
-
-#         # 2. Extract features exactly how the numerical scaler expects them
-#         scaler_features = list(getattr(scaler, "feature_names_in_", ["card_holder_age", "amount"]))
-#         input_num_df = pd.DataFrame([[user_age, user_amount]], columns=scaler_features)
-#         scaled_nums = scaler.transform(input_num_df)[0]
-
-#         # 3. Initialize complete feature vector mapping matching model's dimensions
-#         input_vector_dict = {col: 0 for col in expected_features}
-        
-#         # 4. Map scaled numeric values back into the structural dictionary vector
-#         for i, col_name in enumerate(scaler_features):
-#             if col_name in input_vector_dict:
-#                 input_vector_dict[col_name] = scaled_nums[i]
-#             else:
-#                 matched = False
-#                 if "age" in col_name.lower():
-#                     for f_col in expected_features:
-#                         if "age" in f_col.lower():
-#                             input_vector_dict[f_col] = scaled_nums[i]
-#                             matched = True
-#                             break
-#                 if not matched and ("amount" in col_name.lower() or "amt" in col_name.lower()):
-#                     for f_col in expected_features:
-#                         if "amount" in f_col.lower() or "amt" in f_col.lower():
-#                             input_vector_dict[f_col] = scaled_nums[i]
-#                             matched = True
-#                             break
-
-#         # 5. Process category variant flags cleanly
-#         cat_variants = [user_cat, user_cat.lower(), user_cat.capitalize(), user_cat.upper(), user_cat.replace(" ", "_")]
-#         for cv in cat_variants:
-#             dummy_col = f"merchant_category_{cv}"
-#             if dummy_col in input_vector_dict:
-#                 input_vector_dict[dummy_col] = 1
-#                 break
-                
-#         # 6. Process country variant flags cleanly (Fixed Typo)
-#         country_variants = [user_country, user_country.lower(), user_country.upper(), user_country.capitalize()]
-#         for cv in country_variants:
-#             dummy_col = f"device_country_{cv}"
-#             if dummy_col in input_vector_dict:
-#                 input_vector_dict[dummy_col] = 1
-#                 break
-
-#         # 7. Build DataFrame using ALL expected feature columns in exact order
-#         final_input_df = pd.DataFrame([input_vector_dict], columns=expected_features)
-        
-#         # 8. Execute ML core evaluation array matrix
-#         prediction = int(model.predict(final_input_df)[0])
-#         probability = float(model.predict_proba(final_input_df)[0][1])
-
-#         return jsonify({
-#             "status": "success",
-#             "is_fraud": prediction,
-#             "fraud_probability": round(probability, 4),
-#             "meta": { "engine": "XGBoost/RandomForest Core", "latency_status": "nominal" }
-#         })
-#     except Exception as e:
-#         print(f"❌ Error during runtime model prediction: {str(e)}")
-#         return jsonify({"status": "error", "message": str(e)}), 500
-#   if __name__ == "__main__":
-#     # Force 0.0.0.0 for container routing environments like GitHub Codespaces
-#     host_ip = "0.0.0.0" 
-#     print(f"📡 Activating RiskShield Security Gateway on http://{host_ip}:5000")
-#     app.run(debug=True, host=host_ip, port=5000)
 import os
 import sys
 import joblib
@@ -409,75 +7,70 @@ from flask import Flask, jsonify, render_template_string, request, redirect, url
 from sklearn.preprocessing import StandardScaler
 
 # ==========================================
-# ENVIRONMENT-AWARE DYNAMIC PATH ENGINE
+# 1. ENVIRONMENT-AWARE DYNAMIC PATH ARCHITECTURE
 # ==========================================
-# Force container environment true for Codespaces to ensure network proxy bindings work
-IS_CONTAINER = os.path.exists('/.dockerenv') or os.environ.get('CODESPACES') == 'true' or True
-
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
 
-if IS_CONTAINER:
-    print("🐳 Context: Linux Container / GitHub Codespace Environment Detected.")
-    PROJECT_ROOT = "/app" if os.path.exists("/app") else CURRENT_DIR
-    SRC_DIRECTORY = os.path.join(PROJECT_ROOT, "src")
-    DATA_PATH = os.environ.get("DATA_PATH", os.path.join(PROJECT_ROOT, "data", "raw", "Credit.xlsx"))
-    MODEL_PATH = os.environ.get("MODEL_PATH", os.path.join(PROJECT_ROOT, "models", "model.pkl"))
-else:
-    print("💻 Context: Native Windows/Local Host Environment Detected.")
-    if os.path.basename(CURRENT_DIR) in ["src", "app", "API"]:
-        PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
-    else:
-        PROJECT_ROOT = CURRENT_DIR
-    SRC_DIRECTORY = os.path.join(PROJECT_ROOT, "src")
-    DATA_PATH = r"D:\Data Science Projects\Credit-Card-Fraud-Detection-System\data\raw\Credit.xlsx"
-    MODEL_PATH = r"D:\Data Science Projects\Credit-Card-Fraud-Detection-System\models\model.pkl"
+API_DIR = CURRENT_DIR
+DATA_PATH = os.path.join(PROJECT_ROOT, "data", "raw", "Credit.xlsx")
+MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "model.pkl")
+SRC_DIRECTORY = os.path.join(PROJECT_ROOT, "src")
 
-if SRC_DIRECTORY not in sys.path:
+if not os.path.exists(MODEL_PATH):
+    ABS_ROOT = "/workspaces/Credit-Card-Fraud-Detection-System"
+    if os.path.exists(ABS_ROOT):
+        PROJECT_ROOT = ABS_ROOT
+        API_DIR = os.path.join(PROJECT_ROOT, "API")
+        DATA_PATH = os.path.join(PROJECT_ROOT, "data", "raw", "Credit.xlsx")
+        MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "model.pkl")
+        SRC_DIRECTORY = os.path.join(PROJECT_ROOT, "src")
+
+if os.path.exists(SRC_DIRECTORY) and SRC_DIRECTORY not in sys.path:
     sys.path.insert(0, SRC_DIRECTORY)
 
 try:
     from data_pipeline import CreditCardDataPipeline
 except ImportError:
     class CreditCardDataPipeline:
-        def __init__(self, file_path): self.file_path = file_path
-        def load_data(self): return pd.read_excel(self.file_path)
-        def clean_data(self, df): return df.copy()
-        def encode_features(self, df): return df, None
+        def __init__(self, file_path): 
+            self.file_path = file_path
+        def load_data(self): 
+            return pd.read_excel(self.file_path)
+        def clean_data(self, df): 
+            return df.copy()
+        def encode_features(self, df): 
+            return df, None
         @property
-        def training_columns(self): return ["card_holder_age", "amount"]
+        def training_columns(self): 
+            return ["card_holder_age", "amount"]
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "risk_shield_super_secure_vault_key_2026")
 
-# Fallback checking for relative setup files
-if not os.path.exists(MODEL_PATH):
-    print(f"⚠️ Target path unreadable. Falling back to relative structure layout...")
-    DATA_PATH = os.path.join(PROJECT_ROOT, "data", "raw", "Credit.xlsx")
-    MODEL_PATH = os.path.join(PROJECT_ROOT, "models", "model.pkl")
-
 # ==========================================
-# GLOBAL MACHINE LEARNING ENGINE INITIALIZATION
+# 2. MACHINE LEARNING ENGINE LOAD
 # ==========================================
-print(f"🚀 Loading Model Artifact from: {MODEL_PATH}")
+print(f"🚀 Attempting to load model binary from: {MODEL_PATH}")
 if os.path.exists(MODEL_PATH):
     try:
         model = joblib.load(MODEL_PATH)
-        print("-> Model Binary loaded successfully.")
+        print("-> Success: Model Binary loaded successfully.")
     except Exception as e:
-        print(f"❌ Failed to load model file: {e}. Activating Mock Model.")
+        print(f"❌ Failed to load model binary: {e}. Activating Mock Backup.")
         class MockModel:
             def predict(self, X): return np.array([0])
             def predict_proba(self, X): return np.array([[0.92, 0.08]])
         model = MockModel()
 else:
-    print(f"❌ CRITICAL ERROR: Trained model file missing at {MODEL_PATH}! Using Mock model placeholder.")
+    print(f"⚠️ Model file not found at path. Activating Mock Engine placeholder.")
     class MockModel:
         def predict(self, X): return np.array([0])
         def predict_proba(self, X): return np.array([[0.92, 0.08]])
     model = MockModel()
 
-categories = ["Entertainment", "Food & Dining", "Gas Stations", "Groceries", "Online Retail"]
-countries = ["USA", "CAN", "GBR", "AUS", "DEU"]
+categories = ["Entertainment", "Food & Dining", "Gas Stations", "Groceries", "Online Retail", "Travel", "Retail"]
+countries = ["US", "CA", "UK", "DE", "FR", "AU", "RU"]
 feature_columns = ["card_holder_age", "amount"]
 scaler = StandardScaler()
 
@@ -487,55 +80,33 @@ if os.path.exists(DATA_PATH):
         pipeline = CreditCardDataPipeline(file_path=DATA_PATH)
         raw_df = pipeline.load_data()
         cleaned_df = pipeline.clean_data(raw_df)
-        
         existing_cols = list(cleaned_df.columns)
         
-        age_col = None
-        for candidate in ["card_holder_age", "age", "cardholder_age", "holder_age"]:
-            if candidate in existing_cols:
-                age_col = candidate
-                break
+        age_col = next((c for c in existing_cols if c in ["card_holder_age", "age", "cardholder_age"]), None)
         if not age_col:
-            for c in existing_cols:
-                if 'age' in str(c).lower():
-                    age_col = c
-                    break
+            age_col = next((c for c in existing_cols if 'age' in str(c).lower()), "card_holder_age")
 
-        amount_col = None
-        for candidate in ["amount", "transaction_amount", "amt", "Amount"]:
-            if candidate in existing_cols:
-                amount_col = candidate
-                break
+        amount_col = next((c for c in existing_cols if c in ["amount", "transaction_amount", "amt", "Amount"]), None)
         if not amount_col:
-            for c in existing_cols:
-                if 'amount' in str(c).lower() or 'amt' in str(c).lower():
-                    amount_col = c
-                    break
+            amount_col = next((c for c in existing_cols if 'amount' in str(c).lower() or 'amt' in str(c).lower()), "amount")
 
-        if age_col and amount_col:
-            numerical_cols = [age_col, amount_col]
-        else:
-            numeric_cols_found = list(cleaned_df.select_dtypes(include=[np.number]).columns)
-            numerical_cols = numeric_cols_found[:2] if len(numeric_cols_found) >= 2 else ["card_holder_age", "amount"]
-
+        numerical_cols = [age_col, amount_col]
         valid_numeric_data = cleaned_df[numerical_cols].dropna() if all(col in cleaned_df.columns for col in numerical_cols) else pd.DataFrame()
         
         if not valid_numeric_data.empty and len(valid_numeric_data) > 1 and valid_numeric_data.var().sum() > 0:
             scaler.fit(valid_numeric_data)
         else:
-            scaler.fit(pd.DataFrame([[30, 100], [50, 500]], columns=numerical_cols))
+            scaler.fit(pd.DataFrame([[30, 100], [50, 500]], columns=["card_holder_age", "amount"]))
         
         if "merchant_category" in cleaned_df and len(cleaned_df["merchant_category"].dropna()) > 0:
             categories = sorted(cleaned_df["merchant_category"].dropna().unique().tolist())
         if "device_country" in cleaned_df and len(cleaned_df["device_country"].dropna()) > 0:
             countries = sorted(cleaned_df["device_country"].dropna().unique().tolist())
         feature_columns = getattr(pipeline, 'training_columns', ["card_holder_age", "amount"])
-        
     except Exception as e:
-        print(f"❌ Error during telemetry data ingestion: {str(e)}. Using fallback defaults.")
+        print(f"❌ Ingestion warning: {str(e)}")
         scaler.fit(pd.DataFrame([[30, 100], [50, 500]], columns=["card_holder_age", "amount"]))
 else:
-    print("⚠️ Warning: Data source spreadsheet missing. Initializing fallback structures.")
     scaler.fit(pd.DataFrame([[30, 100], [50, 500]], columns=["card_holder_age", "amount"]))
 
 USERS_DB = {
@@ -547,6 +118,9 @@ USERS_DB = {
     }
 }
 
+# ==========================================
+# 3. GLOBAL BASE TEMPLATE GRAPHICS
+# ==========================================
 BASE_HEAD = """
 <head>
     <meta charset="UTF-8">
@@ -558,31 +132,34 @@ BASE_HEAD = """
     <style>body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #0b0f19; }</style>
 </head>
 """
-NAVBAR = """
-<header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50 px-6 py-4 flex justify-between items-center">
-    <a href="/" class="flex items-center gap-3 no-underline">
-        <div class="bg-gradient-to-tr from-cyan-500 to-blue-600 p-2.5 rounded-xl shadow-lg shadow-blue-500/20"><i class="fa-solid fa-shield-halved text-xl text-white"></i></div>
-        <div>
-            <h1 class="text-lg font-bold tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">RiskShield AI</h1>
-            <p class="text-xs text-cyan-400 font-mono tracking-widest uppercase">Secured Web App Gateway</p>
-        </div>
-    </a>
-    <nav class="flex items-center gap-6">
-        {% if session.get('user_email') %}
-            <a href="/dashboard" class="text-sm font-medium text-slate-300 hover:text-white transition-colors"><i class="fa-solid fa-chart-pie mr-1.5"></i>Scoring Console</a>
-            <a href="/account" class="text-sm font-medium text-slate-300 hover:text-white transition-colors"><i class="fa-solid fa-user-gear mr-1.5"></i>My Profile</a>
-            <a href="/logout" class="text-sm font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 px-4 py-2 rounded-xl border border-rose-500/20 transition-all"><i class="fa-solid fa-power-off mr-1.5"></i>Sign Out</a>
-        {% else %}
-            <a href="/login" class="text-sm font-medium text-slate-300 hover:text-white transition-colors">Sign In</a>
-            <a href="/register" class="bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-sm font-semibold px-5 py-2.5 rounded-xl shadow-md transition-all hover:opacity-95">Create Account</a>
-        {% endif %}
-    </nav>
-</header>
-"""
-BASE_LAYOUT = "<!DOCTYPE html><html lang='en'>{BASE_HEAD}<body class='text-slate-200 min-h-screen flex flex-col justify-between'>{NAVBAR}{CONTENT}</body></html>"
+
+def get_navbar(is_logged_in):
+    if is_logged_in:
+        nav_links = """
+        <a href="/dashboard" class="text-sm font-medium text-slate-300 hover:text-white transition-colors"><i class="fa-solid fa-chart-pie mr-1.5"></i>Scoring Console</a>
+        <a href="/logout" class="text-sm font-medium text-rose-400 hover:text-rose-300 bg-rose-500/10 px-4 py-2 rounded-xl border border-rose-500/20 transition-all"><i class="fa-solid fa-power-off mr-1.5"></i>Sign Out</a>
+        """
+    else:
+        nav_links = """
+        <a href="/login" class="text-sm font-medium text-slate-300 hover:text-white transition-colors">Sign In</a>
+        """
+    return f"""
+    <header class="border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50 px-6 py-4 flex justify-between items-center">
+        <a href="/" class="flex items-center gap-3 no-underline">
+            <div class="bg-gradient-to-tr from-cyan-500 to-blue-600 p-2.5 rounded-xl shadow-lg shadow-blue-500/20"><i class="fa-solid fa-shield-halved text-xl text-white"></i></div>
+            <div>
+                <h1 class="text-lg font-bold tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">RiskShield AI</h1>
+                <p class="text-xs text-cyan-400 font-mono tracking-widest uppercase">Secured Web App Gateway</p>
+            </div>
+        </a>
+        <nav class="flex items-center gap-6">{nav_links}</nav>
+    </header>
+    """
 
 def render_page(content_template, **context):
-    full_html = BASE_LAYOUT.replace("{BASE_HEAD}", BASE_HEAD).replace("{NAVBAR}", NAVBAR).replace("{CONTENT}", content_template)
+    is_logged_in = "user_email" in session
+    current_navbar = get_navbar(is_logged_in)
+    full_html = f"<!DOCTYPE html><html lang='en'>{BASE_HEAD}<body class='text-slate-200 min-h-screen flex flex-col justify-between'>{current_navbar}{content_template}</body></html>"
     return render_template_string(full_html, **context)
 
 HOME_CONTENT = """
@@ -590,172 +167,103 @@ HOME_CONTENT = """
     <span class="text-xs font-mono tracking-widest uppercase text-cyan-400 bg-cyan-500/10 border border-cyan-500/30 px-3 py-1.5 rounded-full mb-6">Autonomous Risk Infrastructure</span>
     <h2 class="text-4xl md:text-5xl font-extrabold text-white tracking-tight leading-tight max-w-2xl">Real-Time Machine Learning <br><span class="bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent">Credit Card Fraud Prevention</span></h2>
     <div class="mt-10 flex flex-wrap gap-4 justify-center">
-        {% if session.get('user_email') %} <a href="/dashboard" class="bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold px-8 py-4 rounded-xl shadow-lg hover:opacity-95 transition-all">Launch Scoring Console</a>
-        {% else %} <a href="/register" class="bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold px-8 py-4 rounded-xl shadow-lg hover:opacity-95 transition-all">Get Started Free</a>
-        <a href="/login" class="bg-slate-900 border border-slate-800 text-slate-300 font-semibold px-8 py-4 rounded-xl hover:text-white transition-all">Access Account</a> {% endif %}
+        {% if session.get('user_email') %} 
+            <a href="/dashboard" class="bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold px-8 py-4 rounded-xl shadow-lg hover:opacity-95 transition-all">Launch Scoring Console</a>
+        {% else %} 
+            <a href="/login" class="bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold px-8 py-4 rounded-xl shadow-lg hover:opacity-95 transition-all">Access Scoring Dashboard</a> 
+        {% endif %}
     </div>
 </main>
 """
-REGISTER_CONTENT = """
+
+LOGIN_CONTENT = """
 <main class="flex-grow flex items-center justify-center p-6 my-6">
     <div class="max-w-md w-full bg-slate-900/40 border border-slate-800 backdrop-blur-xl p-8 rounded-3xl shadow-2xl">
-        <h3 class="text-2xl font-bold text-white text-center tracking-tight mb-6">Create your account</h3>
-        <div class="space-y-2.5 mb-6">
-            <button onclick="alert('Google Auth Connect...')" class="w-full bg-slate-950 border border-slate-800 hover:bg-slate-900 text-slate-200 text-sm font-medium py-3 rounded-xl transition-all flex items-center justify-center gap-3"><i class="fa-brands fa-google"></i> Continue with Google</button>
-            <button onclick="alert('Facebook Auth Connect...')" class="w-full bg-slate-950 border border-slate-800 hover:bg-slate-900 text-slate-200 text-sm font-medium py-3 rounded-xl transition-all flex items-center justify-center gap-3"><i class="fa-brands fa-facebook text-blue-500"></i> Continue with Facebook</button>
-        </div>
-        <div class="relative flex items-center justify-center mb-6"><div class="absolute inset-0 flex items-center"><div class="w-full border-t border-slate-800/80"></div></div><span class="relative px-3 bg-[#0b0f19] text-[9px] font-bold tracking-widest text-slate-500 uppercase">OR CONTINUE WITH EMAIL</span></div>
+        <h3 class="text-2xl font-bold text-white text-center tracking-tight mb-6">Security Portal Login</h3>
         <form method="POST" class="space-y-4">
-            <div><label class="block text-xs font-semibold text-slate-400 mb-2">Full Name</label><input type="text" name="name" required class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-cyan-500"></div>
-            <div><label class="block text-xs font-semibold text-slate-400 mb-2">Email Address</label><input type="email" name="email" required class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-cyan-500"></div>
-            <div><label class="block text-xs font-semibold text-slate-400 mb-2">Password</label><input type="password" name="password" required class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-cyan-500"></div>
-            <button type="submit" class="w-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold py-3.5 rounded-xl text-sm mt-2">Sign Up</button>
+            <div><label class="block text-xs font-semibold text-slate-400 mb-2">Email Address</label><input type="email" name="email" value="demo@riskshield.ai" required class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-cyan-500"></div>
+            <div><label class="block text-xs font-semibold text-slate-400 mb-2">Password</label><input type="password" name="password" value="password123" required class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-3 px-4 text-sm text-white focus:outline-none focus:border-cyan-500"></div>
+            <button type="submit" class="w-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold py-3.5 rounded-xl text-sm mt-2">Continue</button>
         </form>
     </div>
 </main>
 """
-LOGIN_CONTENT = REGISTER_CONTENT.replace("Create your account", "Welcome back").replace("Sign Up", "Continue")
 
-ACCOUNT_CONTENT = " <main class='p-12 text-center'><h3 class='text-xl text-white'>Profile Configuration</h3><p class='text-slate-400'>Logged in as: {{ session['user_email'] }}</p></main> "
-# DASHBOARD_CONTENT = """
-# <main class="flex-grow max-w-6xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-#     <section class="lg:col-span-7 bg-slate-900/40 border border-slate-800 backdrop-blur-xl p-6 rounded-3xl shadow-2xl">
-#         <form id="prediction-form" class="space-y-4">
-#             <div class="grid grid-cols-2 gap-4">
-#                 <div><label class="block text-[10px] font-bold text-slate-500 mb-2">Cardholder Age</label><input type="number" name="age" value="34" required class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-3 px-4 text-sm text-white"></div>
-#                 <div><label class="block text-[10px] font-bold text-slate-500 mb-2">Amount ($ USD)</label><input type="number" step="0.01" name="amount" value="125.50" required class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-3 px-4 text-sm text-white"></div>
-#             </div>
-#             <div class="grid grid-cols-2 gap-4">
-#                 <div><label class="block text-[10px] font-bold text-slate-500 mb-2">Merchant Category</label><select name="category" class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-3 px-4 text-sm text-white">{% for cat in categories %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}</select></div>
-#                 <div><label class="block text-[10px] font-bold text-slate-500 mb-2">Origin Country</label><select name="country" class="w-full bg-slate-950/50 border border-slate-800 rounded-xl py-3 px-4 text-sm text-white">{% for c in countries %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select></div>
-#             </div>
-#             <button type="submit" class="w-full bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-semibold py-3.5 rounded-xl text-sm mt-2">Evaluate Telemetry Vectors</button>
-#         </form>
-#     </section>
-#     <section class="lg:col-span-5">
-#         <div id="output-display" class="h-full bg-slate-900/40 border border-slate-800 p-5 rounded-3xl flex flex-col justify-between">
-#             <div>
-#                 <h4 class="text-xs uppercase text-slate-500 font-mono mb-4">Response Matrix Node</h4>
-#                 <div class="bg-slate-950/60 p-4 rounded-xl border border-slate-800"><p id="prob-text" class="text-2xl font-mono font-bold text-cyan-400">0.0%</p><p class="text-xs text-slate-400 mt-1">Algorithmic Fraud Imbalance Score</p></div>
-#             </div>
-#         </div>
-#     </section>
-# </main>
-
-# <script>
-# document.getElementById('prediction-form').addEventListener('submit', async function(e) {
-#     e.preventDefault();
-#     const formData = new FormData(this);
-#     const probTextField = document.getElementById('prob-text');
-    
-#     probTextField.innerText = "Evaluating...";
-    
-#     try {
-#         const response = await fetch('/predict', {
-#             method: 'POST',
-#             headers: { 'Content-Type': 'application/json' },
-#             body: JSON.stringify({ 
-#                 age: parseInt(formData.get('age')), 
-#                 amount: parseFloat(formData.get('amount')), 
-#                 category: formData.get('category'), 
-#                 country: formData.get('country') 
-#             })
-#         });
-        
-#         const data = await response.json();
-#         console.log("ℹ️ Raw API Response payload received:", data);
-        
-#         if (!response.ok || data.status === "error") {
-#             probTextField.className = "text-lg font-mono font-bold text-rose-400";
-#             probTextField.innerText = `API ERROR: ${data.message || 'Server Exception'}`;
-#             return;
-#         }
-
-#         // Handle both possible property variants ('fraud_probability' or 'probability')
-#         const rawProb = data.fraud_probability !== undefined ? data.fraud_probability : data.probability;
-        
-#         if (rawProb !== undefined) {
-#             const formattedPercentage = (parseFloat(rawProb) * 100).toFixed(2) + '%';
-#             const riskLabel = data.is_fraud ? "CRITICAL RISK" : "SECURE";
-            
-#             // Dynamic visual treatment depending on classification safety threshold
-#             probTextField.className = data.is_fraud ? "text-2xl font-mono font-bold text-rose-500" : "text-2xl font-mono font-bold text-cyan-400";
-#             probTextField.innerText = `${formattedPercentage} — ${riskLabel}`;
-#         } else {
-#             probTextField.className = "text-base font-mono font-bold text-amber-400";
-#             probTextField.innerText = `KEY MISMATCH: Got keys [${Object.keys(data).join(', ')}]`;
-#         }
-#     } catch (err) {
-#         console.error("❌ Fetch Exception:", err);
-#         probTextField.className = "text-lg font-mono font-bold text-rose-600";
-#         probTextField.innerText = "CRITICAL PATH DISCONNECT";
-#     }
-# });
-# </script>
-# """
-# Replace the old giant multi-line string with this clean file read:
-if os.path.exists(os.path.join(CURRENT_DIR, "dashboard.html")):
-    with open(os.path.join(CURRENT_DIR, "dashboard.html"), "r") as f:
-        DASHBOARD_CONTENT = f.read()
-else:
-    DASHBOARD_CONTENT = "<p>Dashboard file missing.</p>"
-
-# ... keep your intermediate routes ...
-
-@app.route("/dashboard")
-def dashboard():
-    if "user_email" not in session: 
-        return redirect(url_for("login"))
-    return render_page(DASHBOARD_CONTENT, categories=categories, countries=countries)
+# ==========================================
+# 4. ROUTING SYSTEMS LOGIC
+# ==========================================
 @app.route("/")
-def home(): return render_page(HOME_CONTENT)
-
-@app.route("/register", methods=["GET", "POST"])
-def register():
-    if request.method == "POST":
-        email = request.form.get("email").strip().lower()
-        USERS_DB[email] = {"password": request.form.get("password"), "name": request.form.get("name"), "tier": "Standard User", "joined": "2026-05-29"}
-        session["user_email"] = email
-        return redirect(url_for("dashboard"))
-    return render_page(REGISTER_CONTENT)
+def home():
+    return render_page(HOME_CONTENT)
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        email = request.form.get("email").strip().lower()
-        if email in USERS_DB:
+        email = request.form.get("email")
+        password = request.form.get("password")
+        if email in USERS_DB and USERS_DB[email]["password"] == password:
             session["user_email"] = email
             return redirect(url_for("dashboard"))
+        flash("Invalid Credentials", "danger")
     return render_page(LOGIN_CONTENT)
 
 @app.route("/logout")
 def logout():
-    session.clear()
+    session.pop("user_email", None)
     return redirect(url_for("home"))
 
 @app.route("/dashboard")
 def dashboard():
-    if "user_email" not in session: return redirect(url_for("login"))
-    return render_page(DASHBOARD_CONTENT, categories=categories, countries=countries)
+    if "user_email" not in session:
+        return redirect(url_for("login"))
+        
+    search_paths = [
+        os.path.join(CURRENT_DIR, "dashboard.html"),
+        os.path.join(CURRENT_DIR, "templates", "dashboard.html"),
+        os.path.join(PROJECT_ROOT, "dashboard.html"),
+        os.path.join(API_DIR, "dashboard.html"),
+        os.path.join(API_DIR, "templates", "dashboard.html")
+    ]
 
-# ==========================================
-# RESTFUL API INFERENCE ENDPOINT
-# ==========================================
+    dashboard_html = None
+    for target in search_paths:
+        if os.path.exists(target):
+            try:
+                with open(target, "r", encoding="utf-8") as f:
+                    dashboard_html = f.read()
+                print(f"🎯 Successfully loaded layout template at: {target}")
+                break
+            except Exception as e:
+                print(f"⚠️ Template reading bypass notification: {e}")
+            
+    if dashboard_html is None:
+        searched_locations = "<br>".join([f"• {p}" for p in search_paths])
+        return render_page(f"""
+        <main class="max-w-xl mx-auto px-6 py-12 text-center bg-slate-900/50 border border-slate-800 rounded-3xl mt-12">
+            <h3 class="text-xl font-bold text-rose-400 mb-2">⚠️ Template Discovery Matrix Failure</h3>
+            <p class="text-sm text-slate-400 mb-4">The file 'dashboard.html' is missing or misplaced.</p>
+            <div class="text-left bg-slate-950 p-4 rounded-xl border border-slate-800/80 text-xs font-mono text-slate-400 space-y-2">
+                <p class="text-cyan-400 font-semibold">Checked Locations:</p>
+                <p class="text-slate-500 text-[11px] leading-relaxed">{searched_locations}</p>
+                <hr class="border-slate-800 my-2">
+                <p class="text-white">💡 Quick Fix: Verify that 'dashboard.html' sits directly inside the same folder as your 'app.py' file.</p>
+            </div>
+        </main>
+        """)
+        
+    return render_page(dashboard_html, categories=categories, countries=countries)
+
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
         data = request.get_json() or {}
         user_age = float(data.get("age", 30))
         user_amount = float(data.get("amount", 0.0))
-        
         user_cat = str(data.get("category", "")).strip()
         user_country = str(data.get("country", "")).strip()
-
+        
         global feature_columns
-        if hasattr(model, "feature_names_in_"):
-            expected_features = list(model.feature_names_in_)
-        else:
-            expected_features = feature_columns
+        expected_features = list(model.feature_names_in_) if hasattr(model, "feature_names_in_") else feature_columns
 
         scaler_features = list(getattr(scaler, "feature_names_in_", ["card_holder_age", "amount"]))
         input_num_df = pd.DataFrame([[user_age, user_amount]], columns=scaler_features)
@@ -781,7 +289,6 @@ def predict():
                             matched = True
                             break
 
-        # Fixed syntax scoping clean mutations
         cat_variants = [user_cat, user_cat.lower(), user_cat.capitalize(), user_cat.upper(), user_cat.replace(" ", "_")]
         for cv in cat_variants:
             dummy_col = f"merchant_category_{cv}"
@@ -797,7 +304,6 @@ def predict():
                 break
 
         final_input_df = pd.DataFrame([input_vector_dict], columns=expected_features)
-        
         prediction = int(model.predict(final_input_df)[0])
         probability = float(model.predict_proba(final_input_df)[0][1])
 
@@ -805,13 +311,12 @@ def predict():
             "status": "success",
             "is_fraud": prediction,
             "fraud_probability": round(probability, 4),
-            "meta": { "engine": "XGBoost/RandomForest Core", "latency_status": "nominal" }
+            "meta": { "engine": "ML Inference Core", "latency_status": "nominal" }
         })
     except Exception as e:
-        print(f"❌ Error during runtime model prediction: {str(e)}")
+        print(f"❌ Error during model prediction: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == "__main__":
-    # Force open binding configuration for Codespaces proxy maps
     print("📡 Activating RiskShield Security Gateway on http://0.0.0.0:5000")
     app.run(debug=True, host="0.0.0.0", port=5000)
