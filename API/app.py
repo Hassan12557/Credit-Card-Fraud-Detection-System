@@ -9,14 +9,12 @@ from sklearn.preprocessing import StandardScaler
 # ==========================================
 # ENVIRONMENT-AWARE DYNAMIC PATH ENGINE
 # ==========================================
-# Determine if running inside a Docker container or Codespace
 IS_CONTAINER = os.path.exists('/.dockerenv') or os.environ.get('CODESPACES') == 'true'
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 if IS_CONTAINER:
     print("🐳 Context: Linux Container / GitHub Codespace Environment Detected.")
-    # Force absolute container mapping directory paths
     PROJECT_ROOT = "/app"
     SRC_DIRECTORY = os.path.join(PROJECT_ROOT, "src")
     DATA_PATH = os.environ.get("DATA_PATH", os.path.join(PROJECT_ROOT, "data", "raw", "Credit.xlsx"))
@@ -34,11 +32,9 @@ else:
 if SRC_DIRECTORY not in sys.path:
     sys.path.insert(0, SRC_DIRECTORY)
 
-# Import pipeline dependencies safely
 try:
     from data_pipeline import CreditCardDataPipeline
 except ImportError:
-    # Fallback placeholder if pipeline isn't packaged in module format yet
     class CreditCardDataPipeline:
         def __init__(self, file_path): self.file_path = file_path
         def load_data(self): return pd.read_excel(self.file_path)
@@ -50,7 +46,6 @@ except ImportError:
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "risk_shield_super_secure_vault_key_2026")
 
-# Configure cross-platform path mapping
 if IS_CONTAINER:
     DATA_PATH = os.environ.get("DATA_PATH", os.path.join(PROJECT_ROOT, "data", "raw", "Credit.xlsx"))
     MODEL_PATH = os.environ.get("MODEL_PATH", os.path.join(PROJECT_ROOT, "models", "model.pkl"))
@@ -58,7 +53,6 @@ else:
     DATA_PATH = r"D:\Data Science Projects\Credit-Card-Fraud-Detection-System\data\raw\Credit.xlsx"
     MODEL_PATH = r"D:\Data Science Projects\Credit-Card-Fraud-Detection-System\models\model.pkl"
 
-# Fallback to relative paths if Windows absolute paths are missing locally
 if not os.path.exists(MODEL_PATH):
     print(f"⚠️ Target path unreadable. Falling back to relative structure layout...")
     DATA_PATH = os.path.join(PROJECT_ROOT, "data", "raw", "Credit.xlsx")
@@ -78,7 +72,6 @@ else:
         def predict_proba(self, X): return np.array([[0.92, 0.08]])
     model = MockModel()
 
-# 🛡️ DEFENSIVE SEEDING: Safe global fallbacks to prevent NameErrors 
 categories = ["Entertainment", "Food & Dining", "Gas Stations", "Groceries", "Online Retail"]
 countries = ["USA", "CAN", "GBR", "AUS", "DEU"]
 feature_columns = ["card_holder_age", "amount"]
@@ -91,13 +84,9 @@ if os.path.exists(DATA_PATH):
         raw_df = pipeline.load_data()
         cleaned_df = pipeline.clean_data(raw_df)
         
-        # ----------------------------------------------------
-        # DYNAMIC COLUMN DISCOVERY ENGINE (Prevents KeyErrors)
-        # ----------------------------------------------------
         existing_cols = list(cleaned_df.columns)
         print(f"📋 Columns detected inside cleaned dataframe: {existing_cols}")
         
-        # Smart discovery for the Age column
         age_col = None
         for candidate in ["card_holder_age", "age", "cardholder_age", "holder_age"]:
             if candidate in existing_cols:
@@ -109,7 +98,6 @@ if os.path.exists(DATA_PATH):
                     age_col = c
                     break
 
-        # Smart discovery for the Amount column
         amount_col = None
         for candidate in ["amount", "transaction_amount", "amt", "Amount"]:
             if candidate in existing_cols:
@@ -121,7 +109,6 @@ if os.path.exists(DATA_PATH):
                     amount_col = c
                     break
 
-        # Apply discovered mappings or execute safe fallback
         if age_col and amount_col:
             numerical_cols = [age_col, amount_col]
             print(f"🎯 Success: Automatically mapped numerical features to: {numerical_cols}")
@@ -134,9 +121,6 @@ if os.path.exists(DATA_PATH):
                 numerical_cols = ["card_holder_age", "amount"]
                 print(f"🚨 Defaulting to base definitions. Data schema may be corrupted.")
 
-        # ----------------------------------------------------
-        # SAFE SCALER FITTING ENGINE (Prevents RuntimeWarnings)
-        # ----------------------------------------------------
         valid_numeric_data = cleaned_df[numerical_cols].dropna() if all(col in cleaned_df.columns for col in numerical_cols) else pd.DataFrame()
         
         if not valid_numeric_data.empty and len(valid_numeric_data) > 1 and valid_numeric_data.var().sum() > 0:
@@ -160,9 +144,6 @@ else:
     print("⚠️ Warning: Data source spreadsheet missing. Initializing fallback structures.")
     scaler.fit(pd.DataFrame([[30, 100], [50, 500]], columns=["card_holder_age", "amount"]))
 
-# ==========================================
-# SIMULATED MEMORY DATABASES
-# ==========================================
 USERS_DB = {
     "demo@riskshield.ai": {
         "password": "password123",
@@ -172,7 +153,6 @@ USERS_DB = {
     }
 }
 
-# UI Layout Components
 BASE_HEAD = """
 <head>
     <meta charset="UTF-8">
@@ -241,6 +221,7 @@ REGISTER_CONTENT = """
 </main>
 """
 LOGIN_CONTENT = REGISTER_CONTENT.replace("Create your account", "Welcome back").replace("Sign Up", "Continue")
+
 DASHBOARD_CONTENT = """
 <main class="flex-grow max-w-6xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
     <section class="lg:col-span-7 bg-slate-900/40 border border-slate-800 backdrop-blur-xl p-6 rounded-3xl shadow-2xl">
@@ -269,13 +250,34 @@ DASHBOARD_CONTENT = """
 document.getElementById('prediction-form').addEventListener('submit', async function(e) {
     e.preventDefault();
     const formData = new FormData(this);
-    const response = await fetch('/predict', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ age: parseInt(formData.get('age')), amount: parseFloat(formData.get('amount')), category: formData.get('category'), country: formData.get('country') })
-    });
-    const data = await response.json();
-    document.getElementById('prob-text').innerText = (data.fraud_probability * 100).toFixed(2) + '% — ' + (data.is_fraud ? "CRITICAL RISK" : "SECURE");
+    
+    try {
+        const response = await fetch('/predict', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                age: parseInt(formData.get('age')), 
+                amount: parseFloat(formData.get('amount')), 
+                category: formData.get('category'), 
+                country: formData.get('country') 
+            })
+        });
+        
+        const data = await response.json();
+        
+        // 🎯 FIX: Added protective fallback validation mapping structures
+        if (data && data.status === "success" && data.fraud_probability !== undefined) {
+            const formattedPercentage = (data.fraud_probability * 100).toFixed(2) + '%';
+            const riskLabel = data.is_fraud ? "CRITICAL RISK" : "SECURE";
+            document.getElementById('prob-text').innerText = `${formattedPercentage} — ${riskLabel}`;
+        } else {
+            console.error("Incompatible packet received:", data);
+            document.getElementById('prob-text').innerText = "ERROR: Unexpected API format";
+        }
+    } catch (err) {
+        console.error("Network interface communication failure:", err);
+        document.getElementById('prob-text').innerText = "CRITICAL PATH DISCONNECT";
+    }
 });
 </script>
 """
@@ -321,18 +323,17 @@ def predict():
         data = request.get_json() or {}
         user_age = float(data.get("age", 30))
         user_amount = float(data.get("amount", 0.0))
-        user_cat = str(data.get("category", "")).strip().capitalize()
+        
+        # 🎯 FIX: Cross-check casing properties systematically
+        user_cat = str(data.get("category", "")).strip()
         user_country = str(data.get("country", "")).strip()
 
-        # 🎯 FIX: Dynamically adapt to whatever feature layout the scaler was fitted with
         scaler_features = list(getattr(scaler, "feature_names_in_", ["card_holder_age", "amount"]))
         input_num_df = pd.DataFrame([[user_age, user_amount]], columns=scaler_features)
         scaled_nums = scaler.transform(input_num_df)[0]
 
-        # Initialize full vector dimensionality array
         input_vector_dict = {col: 0 for col in feature_columns}
         
-        # 🎯 FIX: Smart feature-mapping crosswalk loop prevents schema tracking drops
         for i, col_name in enumerate(scaler_features):
             if col_name in input_vector_dict:
                 input_vector_dict[col_name] = scaled_nums[i]
@@ -354,16 +355,21 @@ def predict():
                     if i < len(feature_columns):
                         input_vector_dict[feature_columns[i]] = scaled_nums[i]
 
-        # Handle Categorical Binary Mappings
-        cat_dummy_col = f"merchant_category_{user_cat}"
-        country_dummy_col = f"device_country_{user_country}"
-
-        if cat_dummy_col in input_vector_dict: input_vector_dict[cat_dummy_col] = 1
-        if country_dummy_col in input_vector_dict: input_vector_dict[country_dummy_col] = 1
+        # 🎯 FIX: Robust search mapping across lowercase and uppercase feature permutations
+        for cat_variant in [user_cat, user_cat.lower(), user_cat.capitalize(), user_cat.upper()]:
+            dummy_col = f"merchant_category_{cat_variant}"
+            if dummy_col in input_vector_dict:
+                input_vector_dict[dummy_col] = 1
+                break
+                
+        for country_variant in [user_country, user_country.lower(), user_country.upper(), user_country.capitalize()]:
+            dummy_col = f"device_country_{country_variant}"
+            if dummy_col in input_vector_dict:
+                input_vector_dict[dummy_col] = 1
+                break
 
         final_input_df = pd.DataFrame([input_vector_dict], columns=feature_columns)
         
-        # Execute ML Scored Prediction Matrix
         prediction = int(model.predict(final_input_df)[0])
         probability = float(model.predict_proba(final_input_df)[0][1])
 
@@ -374,8 +380,9 @@ def predict():
             "meta": { "engine": "XGBoost/RandomForest Core", "latency_status": "nominal" }
         })
     except Exception as e:
+        # Returns clean 500 JSON packet if the backend model mapping script crashes
         return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == "__main__":
     host_ip = "0.0.0.0" if IS_CONTAINER else "127.0.0.1"
-    app.run(debug=True, host=host_ip, port=5000)
+    app.run(debug=True, host=host_ip, port=5000) 
