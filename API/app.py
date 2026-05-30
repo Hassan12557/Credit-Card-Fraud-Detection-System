@@ -395,6 +395,8 @@ def predict():
     except Exception as e:
         print(f"❌ Error during runtime model prediction: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
- if __name__ == "__main__":
-    host_ip = "0.0.0.0" if IS_CONTAINER else "127.0.0.1"
-    app.run(debug=True, host=host_ip, port=5000) 
+  if __name__ == "__main__":
+    # Force 0.0.0.0 for container routing environments like GitHub Codespaces
+    host_ip = "0.0.0.0" 
+    print(f"📡 Activating RiskShield Security Gateway on http://{host_ip}:5000")
+    app.run(debug=True, host=host_ip, port=5000)
