@@ -616,6 +616,7 @@ REGISTER_CONTENT = """
 """
 LOGIN_CONTENT = REGISTER_CONTENT.replace("Create your account", "Welcome back").replace("Sign Up", "Continue")
 
+ ACCOUNT_CONTENT = " <main class='p-12 text-center'><h3 class='text-xl text-white'>Profile Configuration</h3><p class='text-slate-400'>Logged in as: {{ session['user_email'] }}</p></main> "
 DASHBOARD_CONTENT = """
 <main class="flex-grow max-w-6xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
     <section class="lg:col-span-7 bg-slate-900/40 border border-slate-800 backdrop-blur-xl p-6 rounded-3xl shadow-2xl">
@@ -640,10 +641,14 @@ DASHBOARD_CONTENT = """
         </div>
     </section>
 </main>
+
 <script>
 document.getElementById('prediction-form').addEventListener('submit', async function(e) {
     e.preventDefault();
     const formData = new FormData(this);
+    const probTextField = document.getElementById('prob-text');
+    
+    probTextField.innerText = "Evaluating...";
     
     try {
         const response = await fetch('/predict', {
@@ -658,21 +663,36 @@ document.getElementById('prediction-form').addEventListener('submit', async func
         });
         
         const data = await response.json();
-        if (data && data.status === "success" && data.fraud_probability !== undefined) {
-            const formattedPercentage = (data.fraud_probability * 100).toFixed(2) + '%';
+        console.log("ℹ️ Raw API Response payload received:", data);
+        
+        if (!response.ok || data.status === "error") {
+            probTextField.className = "text-lg font-mono font-bold text-rose-400";
+            probTextField.innerText = `API ERROR: ${data.message || 'Server Exception'}`;
+            return;
+        }
+
+        // Handle both possible property variants ('fraud_probability' or 'probability')
+        const rawProb = data.fraud_probability !== undefined ? data.fraud_probability : data.probability;
+        
+        if (rawProb !== undefined) {
+            const formattedPercentage = (parseFloat(rawProb) * 100).toFixed(2) + '%';
             const riskLabel = data.is_fraud ? "CRITICAL RISK" : "SECURE";
-            document.getElementById('prob-text').innerText = `${formattedPercentage} — ${riskLabel}`;
+            
+            // Dynamic visual treatment depending on classification safety threshold
+            probTextField.className = data.is_fraud ? "text-2xl font-mono font-bold text-rose-500" : "text-2xl font-mono font-bold text-cyan-400";
+            probTextField.innerText = `${formattedPercentage} — ${riskLabel}`;
         } else {
-            document.getElementById('prob-text').innerText = "ERROR: Unexpected API format";
+            probTextField.className = "text-base font-mono font-bold text-amber-400";
+            probTextField.innerText = `KEY MISMATCH: Got keys [${Object.keys(data).join(', ')}]`;
         }
     } catch (err) {
-        document.getElementById('prob-text').innerText = "CRITICAL PATH DISCONNECT";
+        console.error("❌ Fetch Exception:", err);
+        probTextField.className = "text-lg font-mono font-bold text-rose-600";
+        probTextField.innerText = "CRITICAL PATH DISCONNECT";
     }
 });
 </script>
 """
-ACCOUNT_CONTENT = " <main class='p-12 text-center'><h3 class='text-xl text-white'>Profile Configuration</h3><p class='text-slate-400'>Logged in as: {{ session['user_email'] }}</p></main> "
-
 @app.route("/")
 def home(): return render_page(HOME_CONTENT)
 
