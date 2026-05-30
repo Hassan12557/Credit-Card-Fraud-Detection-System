@@ -315,6 +315,7 @@ def dashboard():
     return render_page(DASHBOARD_CONTENT, categories=categories, countries=countries)
 
 # ==========================================
+ # ==========================================
 # RESTFUL API INFERENCE ENDPOINT
 # ==========================================
 @app.route("/predict", methods=["POST"])
@@ -324,52 +325,62 @@ def predict():
         user_age = float(data.get("age", 30))
         user_amount = float(data.get("amount", 0.0))
         
-        # 🎯 FIX: Cross-check casing properties systematically
         user_cat = str(data.get("category", "")).strip()
         user_country = str(data.get("country", "")).strip()
 
+        # 1. Grab feature requirements directly from model properties if available
+        # Fallback to the global feature_columns tracking sequence
+        global feature_columns
+        if hasattr(model, "feature_names_in_"):
+            expected_features = list(model.feature_names_in_)
+        else:
+            expected_features = feature_columns
+
+        # 2. Extract features exactly how the numerical scaler expects them
         scaler_features = list(getattr(scaler, "feature_names_in_", ["card_holder_age", "amount"]))
         input_num_df = pd.DataFrame([[user_age, user_amount]], columns=scaler_features)
         scaled_nums = scaler.transform(input_num_df)[0]
 
-        input_vector_dict = {col: 0 for col in feature_columns}
+        # 3. Initialize complete feature vector mapping matching model's dimensions
+        input_vector_dict = {col: 0 for col in expected_features}
         
+        # 4. Map scaled numeric values back into the structural dictionary vector
         for i, col_name in enumerate(scaler_features):
             if col_name in input_vector_dict:
                 input_vector_dict[col_name] = scaled_nums[i]
             else:
+                # Handle alternative name formats safely
                 matched = False
                 if "age" in col_name.lower():
-                    for f_col in feature_columns:
+                    for f_col in expected_features:
                         if "age" in f_col.lower():
                             input_vector_dict[f_col] = scaled_nums[i]
                             matched = True
                             break
                 if not matched and ("amount" in col_name.lower() or "amt" in col_name.lower()):
-                    for f_col in feature_columns:
+                    for f_col in expected_features:
                         if "amount" in f_col.lower() or "amt" in f_col.lower():
                             input_vector_dict[f_col] = scaled_nums[i]
                             matched = True
                             break
-                if not matched:
-                    if i < len(feature_columns):
-                        input_vector_dict[feature_columns[i]] = scaled_nums[i]
 
-        # 🎯 FIX: Robust search mapping across lowercase and uppercase feature permutations
-        for cat_variant in [user_cat, user_cat.lower(), user_cat.capitalize(), user_cat.upper()]:
+        # 5. Process categorical variant flags into sparse vector entries
+        for cat_variant in [user_cat, user_cat.lower(), user_cat.capitalize(), user_cat.upper(), user_cat.replace(" ", "_")]:
             dummy_col = f"merchant_category_{cat_variant}"
             if dummy_col in input_vector_dict:
                 input_vector_dict[dummy_col] = 1
                 break
                 
-        for country_variant in [user_country, user_country.lower(), user_country.upper(), user_country.capitalize()]:
+        for country_variant in [user_country, user_country.lower(), user_country.upper(), country_variant.capitalize() if 'country_variant' in locals() else user_country]:
             dummy_col = f"device_country_{country_variant}"
             if dummy_col in input_vector_dict:
                 input_vector_dict[dummy_col] = 1
                 break
 
-        final_input_df = pd.DataFrame([input_vector_dict], columns=feature_columns)
+        # 🎯 THE CRITICAL FIX: Build DataFrame using ALL expected feature columns in exact order
+        final_input_df = pd.DataFrame([input_vector_dict], columns=expected_features)
         
+        # 6. Execute ML core evaluation array matrix
         prediction = int(model.predict(final_input_df)[0])
         probability = float(model.predict_proba(final_input_df)[0][1])
 
@@ -380,9 +391,8 @@ def predict():
             "meta": { "engine": "XGBoost/RandomForest Core", "latency_status": "nominal" }
         })
     except Exception as e:
-        # Returns clean 500 JSON packet if the backend model mapping script crashes
+        print(f"❌ Error during runtime model prediction: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
-
 if __name__ == "__main__":
     host_ip = "0.0.0.0" if IS_CONTAINER else "127.0.0.1"
     app.run(debug=True, host=host_ip, port=5000) 
